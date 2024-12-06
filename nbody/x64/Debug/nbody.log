@@ -1,0 +1,24 @@
+﻿  Source.cpp
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(2906,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4134,21): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4155,21): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4166,21): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4216,19): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4357,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4369,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\raygui.h(4410,21): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Simulation.h(488,26): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Simulation.h(489,26): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(238,22): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(399,22): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(493,35): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(493,22): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(538,31): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(538,18): warning C4244: 'argument': conversion from 'float' to 'int', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(660,111): warning C4244: 'argument': conversion from 'int' to 'float', possible loss of data
+C:\Users\ntibbetts26\Desktop\nbody\nbody\Source.cpp(931,33): warning C4244: '+=': conversion from 'float' to 'int', possible loss of data
+LINK : warning LNK4075: ignoring '/INCREMENTAL' due to '/FORCE' specification
+raylib.lib(rcore.obj) : warning LNK4006: CloseWindow already defined in user32.lib(USER32.dll); second definition ignored
+LINK : warning LNK4098: defaultlib 'MSVCRT' conflicts with use of other libs; use /NODEFAULTLIB:library
+C:\Users\ntibbetts26\Desktop\nbody\x64\Debug\nbody.exe : warning LNK4088: image being generated due to /FORCE option; image may not run
+  nbody.vcxproj -> C:\Users\ntibbetts26\Desktop\nbody\x64\Debug\nbody.exe
