@@ -1,6 +1,12 @@
 #pragma once
+
+
+#ifdef __CUDACC__
+#include <cuda_runtime.h>
+#endif
+
 #include <cmath>
-#include "raylib.h"
+#include <raylib.h>
 #include <algorithm>
 #include <thread>
 #include <atomic>
@@ -14,13 +20,13 @@
 #include <immintrin.h>
 #endif
 
-struct alignas(16) Vec2
+struct alignas(32) Vec2
 {
 
     float x, y;
 
     // constexpr Vec2() noexcept : x(0.0f), y(0.0f) {} //494ms of performance loss
-    constexpr Vec2() noexcept = default;
+    Vec2() noexcept : x(0.0f), y(0.0f) {}
     // constexpr Vec2(float x, float y) noexcept : x(x), y(y) {}
     constexpr Vec2(float x_, float y_) noexcept : x(x_), y(y_) {}
     inline constexpr Vec2(const Vec2& other) noexcept : x(other.x), y(other.y) {}
@@ -252,11 +258,10 @@ struct alignas(16) Vec2
         return *this - normal * (2.0f * dot(normal));
     }
 
-    Vec2 clamped(const Vec2& min, const Vec2& max) const noexcept
+    template <typename T>
+    T clamp(T value, T min, T max)
     {
-        return Vec2(
-            std::clamp(x, min.x, max.x),
-            std::clamp(y, min.y, max.y));
+        return std::max(min, std::min(max, value));
     }
 
     float component_max() const noexcept
@@ -348,7 +353,6 @@ struct alignas(16) Vec2
         }
 #endif
     }
-
 };
 
 inline Vec2 operator*(float scalar, const Vec2& vec) noexcept

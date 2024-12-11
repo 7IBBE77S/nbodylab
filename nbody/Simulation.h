@@ -1,7 +1,9 @@
 #pragma once
+#include "cuda_physics.cuh"
 #include "Body.h"
 #include "Quadtree.h"
 #include "AABB.h"
+#include "Vec2.h"
 #include <vector>
 #include <random>
 #include <numeric>
@@ -55,62 +57,109 @@ public:
     Quadtree quadtree;
     std::vector<size_t> bodyIndices;
 
-    Simulation()
-        : frame(0), quadtree(5.0f, 5.0f, 16)
-    {
-        size_t n = 10000;
-        bodies.reserve(n);
-        bodyIndices.reserve(n);
-        bodies = uniform_disc(n);
+    std::unique_ptr<CUDAPhysics> cudaPhysics;
+
+    bool useCUDA;
+
+    std::atomic<bool> cudaInitialized{ false };
+
+    /*
+    effects of leaf_capacity:
+
+    Small value (e.g 4):
+    More subdivisions
+    Deeper tree
+    More accurate forces
+    More memory usage
+    Slower tree construction
+
+    Large value (eg 64):
+    Fewer subdivisions
+    Shallower tree
+    Less accurate forces
+    Less memory usage
+    Faster tree construction
+
+    Sweet spot (16):
+    Good balance between:
+    Accuracy
+    Memory usage
+    Performance
+    Tree depth
+
+    theta = 5.0f - which is the barnes hut opening angle parameter:
+
+    Controls accuracy vs performance tradeoff for force calculations
+    Smaller values = more accurate but slower
+    Larger values = less accurate but faster
+    0.5 to 1.0 is typical for good accuracy
+
+    epsilon = 1.0f - The gravitational softening parameter:
+
+    Prevents numerical instabilities in very close encounters
+    Softens the gravitational force at small distances
+    Larger values = more stable but less accurate close interactions
+    Should be scaled based on typical particle separation
+
+    */
+
+    Simulation() : frame(0), quadtree(0.9f, 5.0f, 16), useCUDA(false) {
+        try {
+            size_t n = 15000;
+            bodies.reserve(n);
+            bodyIndices.reserve(n);
+            bodies = uniform_disc(n);
+
+            // Initialize CUDA
+            cudaPhysics = std::make_unique<CUDAPhysics>(n, 1.0f, 1.0f, 16);
+            cudaInitialized.store(true);
+            useCUDA = true;
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << "CUDA init failed: " << e.what() << "\n";
+            cudaInitialized.store(false);
+            useCUDA = false;
+        }
     }
 
-    void step()
-    {
-        float current_dt = SIMULATION_DT.load();
-        iterate(current_dt);
-        //  Body::batch_update_parallel(bodies, current_dt);
-        collide();
-        // attract();
-        ++frame;
+    void step() {
+        if (useCUDA && cudaInitialized.load() && cudaPhysics) {
+            try {
+                cudaPhysics->updateBodies(bodies);
+            }
+            catch (const std::runtime_error& e) {
+                std::cerr << "Falling back to CPU: " << e.what() << "\n";
+                useCUDA = false;
+                quadtree.build(bodies);
+                attract();
+                iterate(SIMULATION_DT);
+            }
+        }
+        else {
+            quadtree.build(bodies);
+            attract();
+            iterate(SIMULATION_DT);
+        }
     }
 
 private:
          void iterate(float dt)
-         {
-              //Single force evaluation
-             attract();
+       {
+           const size_t n = bodies.size();
 
-              //Pre-declare vector size
-             const size_t n = bodies.size();
-
-              //Ensure data alignment
-             alignas(32) std::vector<Vec2> velocities(n);
-             alignas(32) std::vector<Vec2> positions(n);
-
-      //Update velocities with improved vectorization hints
-     #if defined(__clang__)
-     #pragma clang loop vectorize(enable) interleave(enable) unroll(enable)
-     #pragma clang loop vectorize_width(4) interleave_count(4)
-     #endif
-             for (size_t i = 0; i < n; ++i)
-             {
-                  //Separate velocity update into x and y components
-                 bodies[i].vel.x += bodies[i].acc.x * dt;
-                 bodies[i].vel.y += bodies[i].acc.y * dt;
-             }
-
-      //Update positions with improved vectorization hints
-     #if defined(__clang__)
-     #pragma clang loop vectorize(enable) interleave(enable) unroll(enable)
-     #pragma clang loop vectorize_width(4) interleave_count(4)
-     #endif
-             for (size_t i = 0; i < n; ++i)
-             {
-                  //Separate position update into x and y components
-                 bodies[i].pos.x += bodies[i].vel.x * dt;
-                 bodies[i].pos.y += bodies[i].vel.y * dt;
-             }
-         }
+   #if defined(__clang__)
+   #pragma clang loop vectorize(enable) interleave(enable) unroll(enable)
+   #pragma clang loop vectorize_width(4) interleave_count(4)
+   #endif
+           for (size_t i = 0; i < n; ++i)
+           {
+               // Fused multiply-add opportunity
+               bodies[i].vel.x += bodies[i].acc.x * dt;
+               bodies[i].vel.y += bodies[i].acc.y * dt;
+               bodies[i].pos.x += bodies[i].vel.x * dt;
+               bodies[i].pos.y += bodies[i].vel.y * dt;
+           }
+       }
 
     //unstable but fun
 //    void iterate(float dt) {
@@ -350,7 +399,7 @@ private:
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
         float inner_radius = 100.0f;
-        float outer_radius = std::sqrt(static_cast<float>(n)) * 100.7f;
+        float outer_radius = std::sqrt(static_cast<float>(n)) * 300.7f;
 
         std::vector<Body> bodies;
         bodies.reserve(n);
@@ -398,7 +447,7 @@ private:
         // lorenz attractor parameters
         const float sigma = 10.0f;
         const float rho = 28.0f;
-        const float beta = 8.0f / 3.0f;
+        const float beta = 3.0f / 8.0f;
 
         float x = 0.1f;
         float y = 0.0f;
@@ -406,12 +455,12 @@ private:
 
         while (bodies.size() < n)
         {
-            double a = static_cast<double>(dist(rng)) * TAU;
-            double k = 7.0; // adjusting k changes the number of loops and other fun things
+            //double a = static_cast<double>(dist(rng)) * TAU;
+            //double k = 7.0; // adjusting k changes the number of loops and other fun things
 
             // normal
-            // float sin_a = std::sin(a);
-            // float cos_a = std::cos(a);
+       /*      float sin_a = std::sin(a);
+             float cos_a = std::cos(a);*/
 
             /*chaos and cool stuff (m and outer radius will need to be tweaked)*/
             // float sin_a = std::sin(k * a);
@@ -452,23 +501,23 @@ private:
             // float cos_a = scale * (cos_term1 - cos_term2 - cos_term3 - cos_term4);
 
             // Heart shape parametric equations - vertical orientation
-            // float f = static_cast<float>(a) * 2.0f;
-            // float scale = 1.2f;
+             //float f = static_cast<float>(a) * 2.0f;
+             //float scale = 1.2f;
 
-            // // Use powf and single-precision trig functions consistently
-            // float sin_v = std::sinf(f);
-            // float sin_cube = sin_v * sin_v * sin_v;  // Instead of powf
-            // float sin_term = 16.0f * sin_cube;
+             //// Use powf and single-precision trig functions consistently
+             //float sin_v = std::sinf(f);
+             //float sin_cube = sin_v * sin_v * sin_v;  // Instead of powf
+             //float sin_term = 16.0f * sin_cube;
 
-            // // Cosine terms using single-precision
-            // float cos_term1 = 13.0f * std::cosf(f);
-            // float cos_term2 = 5.0f * std::cosf(2.0f * f);
-            // float cos_term3 = 2.0f * std::cosf(3.0f * f);
-            // float cos_term4 = std::cosf(4.0f * f);
+             //// Cosine terms using single-precision
+             //float cos_term1 = 13.0f * std::cosf(f);
+             //float cos_term2 = 5.0f * std::cosf(2.0f * f);
+             //float cos_term3 = 2.0f * std::cosf(3.0f * f);
+             //float cos_term4 = std::cosf(4.0f * f);
 
-            // // Final parametric equations
-            // float cos_a = scale * sin_term;  // x coordinate
-            // float sin_a = -scale * (cos_term1 - cos_term2 - cos_term3 - cos_term4);  // y coordinate
+             //// Final parametric equations
+             //float cos_a = scale * sin_term;  // x coordinate
+             //float sin_a = -scale * (cos_term1 - cos_term2 - cos_term3 - cos_term4);  // y coordinate
             // flip flop
             // float sin_a = std::sin(k*a) * std::cos(a * static_cast<double>(2.0f)); // double frequency spiral
             // float cos_a = std::cos(k*a) * std::sin(a * static_cast<double>(2.0f));
@@ -485,8 +534,8 @@ private:
             // float sin_a = std::sin(k * a) * std::pow(std::cos(a * 3.0), k);
             // float cos_a = std::cos(k * a) * std::pow(std::sin(a * 3.0), k);
             // using k
-             float sin_a = std::sin(k * a) * std::pow(std::cos(a * 3.0), k);
-             float cos_a = std::cos(k * a) * std::pow(std::sin(a * 3.0), k);
+           /*  float sin_a = std::sin(k * a) * std::pow(std::cos(a * 3.0), k);
+             float cos_a = std::cos(k * a) * std::pow(std::sin(a * 3.0), k);*/
 
             // The mural
             // Create oscillating patterns using frame count
@@ -520,22 +569,22 @@ private:
             // // Combine the results
             // float result = sin_a - cos_a; // T
 
-            //const float dt = 0.01f; // Integration timestep for Lorenz
+            const float dt = 0.01f; // Integration timestep for Lorenz
 
-            //// Lorenz equations
-            //float dx = sigma * (y - x);
-            //float dy = x * (rho - z) - y;
-            //float dz = x * y - beta * z;
+            // Lorenz equations
+            float dx = sigma * (y - x);
+            float dy = x * (rho - z) - y;
+            float dz = x * y - beta * z;
 
-            //x += dx * dt;
-            //y += dy * dt;
-            //z += dz * dt;
+            x += dx * dt;
+            y += dy * dt;
+            z += dz * dt;
 
-            //float scale = outer_radius / 10.0f;
-            //Vec2 pos(x * scale, y * scale);
+            float scale = outer_radius / 10.0f;
+            Vec2 pos(x * scale, y * scale);
 
-            //Vec2 vel(-pos.y, pos.x);
-            //vel.normalize();
+            Vec2 vel(-pos.y, pos.x);
+            vel.normalize();
 
             // lemniscate of Bernoulli
             // float sin_a = std::cos(a) / (1.0 + std::sin(a) * std::sin(a));
@@ -555,11 +604,11 @@ private:
             // float sin_a = (k + 1.0f) * std::cosf(static_cast<float>(a)) + std::cosf((k + 1.0f) * static_cast<float>(a));
             // float cos_a = (k + 1.0f) * std::sinf(static_cast<float>(a)) - std::sinf((k + 1.0f) * static_cast<float>(a));
 
-             float t = inner_radius / outer_radius;
-             float r = dist(rng) * (1.0f - t * t) + t * t;
-             Vec2 pos(cos_a, sin_a); // Use x and y for position
-             pos *= outer_radius * std::sqrt(r);
-             Vec2 vel(sin_a, -cos_a);
+             //float t = inner_radius / outer_radius;
+             //float r = dist(rng) * (1.0f - t * t) + t * t;
+             //Vec2 pos(cos_a, sin_a); // Use x and y for position
+             //pos *= outer_radius * std::sqrt(r);
+             //Vec2 vel(sin_a, -cos_a);
 
             // will select a mass range based the above probabilities
             float randProb = dist(rng);
@@ -602,3 +651,4 @@ private:
         return bodies;
     }
 };
+

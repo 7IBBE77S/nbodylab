@@ -7,7 +7,7 @@
 
 struct Quad {
     Vec2 center;
-    float size;
+    float size = 0.0f;
 
     Quad() = default;
     Quad(Vec2 center, float size) : center(center), size(size) {}

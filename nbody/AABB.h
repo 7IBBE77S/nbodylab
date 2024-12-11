@@ -4,7 +4,7 @@
 #include <algorithm>
 
 
-struct alignas(16) AABB
+struct alignas(32) AABB
 {
     Vec2 min;
     Vec2 max;

@@ -76,122 +76,62 @@ uint64_t getGridKey(const Vec2& pos)
 
     return (static_cast<uint64_t>(gridX) << 32) | static_cast<uint64_t>(gridY);
 }
-
-struct SystemMetrics
-{
-    float centralMass;
-    float totalMass;
-    float totalKineticEnergy;
-    float totalPotentialEnergy;
-    float averageOrbitalPeriod;
-    float netForce;
-    float averageSpeed;
-};
-
-SystemMetrics calculateMetrics(const std::vector<Body>& bodies)
-{
-    SystemMetrics metrics = {};
-    static float smoothedDt = SIMULATION_DT.load();
-    smoothedDt = smoothedDt * 0.95f + SIMULATION_DT.load() * 0.05f;
-
-    Vec2 minBound = Vec2{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max() };
-    Vec2 maxBound = Vec2{ std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest() };
-
-    for (const auto& body : bodies)
-    {
-        minBound.x = std::min(minBound.x, body.pos.x);
-        minBound.y = std::min(minBound.y, body.pos.y);
-        maxBound.x = std::max(maxBound.x, body.pos.x);
-        maxBound.y = std::max(maxBound.y, body.pos.y);
-    }
-
-    Vec2 systemSize = maxBound - minBound;
-    float systemRadius = std::sqrt(systemSize.mag_sq()) * 0.5f;
-    const float BASE_ORBITAL_RADIUS = std::max(1000.0f, systemRadius);
-
-    Vec2 centerOfMass = Vec2::zero();
-    float totalMass = 0;
-
-    for (const auto& body : bodies)
-    {
-        centerOfMass += body.pos * body.mass;
-    }
-    centerOfMass = centerOfMass / totalMass;
-
-    const Body* centralBody = nullptr;
-    float minDist = std::numeric_limits<float>::max();
-    const float MASS_THRESHOLD = totalMass * 0.1f;
-
-    for (const auto& body : bodies)
-    {
-        if (body.mass > MASS_THRESHOLD)
-        {
-            float dist = (body.pos - centerOfMass).mag_sq();
-            if (dist < minDist)
-            {
-                minDist = dist;
-                centralBody = &body;
-            }
-        }
-    }
-
-    if (!centralBody)
-        return metrics;
-
-    metrics.centralMass = centralBody->mass;
-    metrics.totalMass = totalMass;
-
-    size_t stableBodyCount = 0;
-    const float BASE_ESCAPE_VELOCITY_SQ = 2.0f;
-
-    float escapeThreshold = BASE_ESCAPE_VELOCITY_SQ * (1.0f + std::log10(smoothedDt + 1.0f));
-
-    for (const auto& body : bodies)
-    {
-        if (&body != centralBody)
-        {
-            Vec2 r = body.pos - centralBody->pos;
-            float dist = r.mag();
-
-            if (dist > BASE_ORBITAL_RADIUS * 2.0f)
-                continue;
-
-            Vec2 relativeVel = body.vel - centralBody->vel;
-            float speedSq = relativeVel.mag_sq();
-
-            float escapeSpeedSq = 2.0f * centralBody->mass / dist;
-
-            if (speedSq < escapeSpeedSq * escapeThreshold)
-            {
-                stableBodyCount++;
-
-                metrics.totalKineticEnergy += 0.5f * body.mass * speedSq;
-                metrics.totalPotentialEnergy += -1.0f * body.mass * centralBody->mass / dist;
-
-                float semiMajorAxis = dist;
-                float period = 2.0f * PI * std::sqrt(semiMajorAxis * semiMajorAxis * semiMajorAxis / centralBody->mass);
-                metrics.averageOrbitalPeriod += period;
-
-                metrics.netForce += body.mass * centralBody->mass / (dist * dist);
-                metrics.averageSpeed += std::sqrt(speedSq);
-            }
-        }
-    }
-
-    if (stableBodyCount > 0)
-    {
-        metrics.averageOrbitalPeriod /= stableBodyCount;
-        metrics.averageSpeed /= stableBodyCount;
-    }
-
-    metrics.totalKineticEnergy *= smoothedDt;
-    metrics.totalPotentialEnergy *= smoothedDt;
-    metrics.netForce *= smoothedDt;
-    metrics.averageSpeed *= std::sqrt(smoothedDt);
-    metrics.averageOrbitalPeriod *= smoothedDt;
-
-    return metrics;
-}
+//int exclamationCount(float ms)
+//{
+//    if (ms <= 16.0f)
+//        return 0; // Below red threshold
+//    return static_cast<int>(std::log2(ms / 16.0f));
+//}
+//PerformanceMetrics perfMetrics;
+//
+//void PerformanceMetrics::print() const
+//{
+//    if (frameCount == 0)
+//        return;
+//    float avgTotal = totalTime / frameCount;
+//    float avgBuild = buildTime / frameCount;
+//    float avgAcc = accTime / frameCount;
+//    float avgUpdate = updateTime / frameCount;
+//
+//    DrawText("Performance Metrics (ms):", 10, 200, 2, WHITE);
+//
+//    // Helper function to get color based on timing - with corrected thresholds
+//    auto getPerformanceColor = [](float ms) -> Color
+//    {
+//        // if (ms > 32.0f)
+//        //     return BLACK; // (FPS flatline) - CRITICAL!
+//        if (ms > 16.0f)
+//            return RED; // Over 16ms (under 60 FPS) - Bad
+//        if (ms > 8.0f)
+//            return ORANGE; // 8-16ms (60-120 FPS) - Okay
+//        if (ms > 4.0f)
+//            return GREEN; // 4-8ms (120-240 FPS) - Good
+//        return SKYBLUE;   // Under 4ms (240+ FPS) - excellent...
+//    };
+//
+//    // Force convert to milliseconds by multiplying by 1000
+//    float msTotal = avgTotal * 1000.0f;
+//    float msBuild = avgBuild * 1000.0f;
+//    float msAcc = avgAcc * 1000.0f;
+//    float msUpdate = avgUpdate * 1000.0f;
+//
+//    // Modified display code
+//    DrawText("Total: ", 10, 220, 2, WHITE);
+//    DrawText(TextFormat("%.4f%s", (double)msTotal, std::string(exclamationCount(msTotal), '!').c_str()),
+//        70, 220, 2, getPerformanceColor(msTotal));
+//
+//    DrawText("Build: ", 10, 240, 2, WHITE);
+//    DrawText(TextFormat("%.4f%s ", (double)msBuild, std::string(exclamationCount(msBuild), '!').c_str()),
+//        70, 240, 2, getPerformanceColor(msBuild));
+//
+//    DrawText("Force: ", 10, 260, 2, WHITE);
+//    DrawText(TextFormat("%.4f%s", (double)msAcc, std::string(exclamationCount(msAcc), '!').c_str()),
+//        70, 260, 2, getPerformanceColor(msAcc));
+//
+//    DrawText("Update: ", 10, 280, 2, WHITE);
+//    DrawText(TextFormat("%.4f%s", (double)msUpdate, std::string(exclamationCount(msUpdate), '!').c_str()),
+//        70, 280, 2, getPerformanceColor(msUpdate));
+//}
 
 Vector2 worldToScreen(Vec2 worldPos, float scale, Vector2 center)
 {
@@ -413,8 +353,6 @@ void drawQuadtreeNode(const Node& root, const std::vector<Node>& nodes, float sc
 
     nodeStack.push_back(&root);
 
-    // Remove performance-based returns and adaptive calculations
-    // Just collect visible nodes
     while (!nodeStack.empty())
     {
         const Node* current = nodeStack.back();
@@ -451,12 +389,10 @@ void drawQuadtreeNode(const Node& root, const std::vector<Node>& nodes, float sc
         }
     }
 
-    // Batch render quads
     rlBegin(RL_LINES);
     for (const auto& quad : visibleQuads)
     {
-        //Color quadColor = PERFORMANCE_MODE ? (Color){100, 100, 100, 50} : // Dimmer in performance mode
-        //                      (Color){100, 100, 100, 100};                // Normal otherwise
+    
         Color quadColor;
         if (PERFORMANCE_MODE) {
             quadColor = Color(100, 100, 100, 50);
@@ -498,7 +434,6 @@ void drawBlackHole(const Body& body, float scale, Vector2 center)
 
     float diskStartRadius = screenRadius * 2.1f;
     float diskEndRadius = screenRadius * 10.51f;
-    // int segments = 10096;
     int segments = 5048;
 
     for (int i = 0; i < segments; i++)
@@ -533,7 +468,6 @@ void drawBlackHole(const Body& body, float scale, Vector2 center)
         DrawTriangle(p2, p3, p4, diskColor);
     }
 
-    // event horizon (pure black with subtle blue edge)
     DrawCircleGradient(
         screenPos.x, screenPos.y,
         screenRadius * 1.03f,
@@ -570,16 +504,6 @@ inline Color getStarColorWithBrightness(const Body& body, float brightness = 1.0
         {255, 50, 0, 255},    // orange red (Red Dwarfs)
         {200, 0, 0, 255},     // deep red (Brown Dwarfs)
 
-        // {200, 0, 0, 255},     // deep red (Brown Dwarfs)
-        // {255, 50, 0, 255},    // orange red (Red Dwarfs)
-        // {255, 100, 0, 255},   // deep orange (Orange Dwarfs)
-        // {255, 150, 50, 255},  // light orange (Transition to Yellow)
-        // {255, 240, 150, 255}, // yellow (Sun-like stars)
-        // {255, 255, 200, 255}, // light yellow (Transition to White)
-        // {219, 233, 244, 255}, // bluish white (White Stars)
-        // {173, 216, 230, 255}, // light blue (Blue-White Stars)
-        // {100, 100, 255, 255}, // blue (Blue Stars)
-        // {0, 0, 255, 255},     // deep blue (Hyper-giant Blue Stars)
         {0, 0, 2, 1} // invisible/black (neutron stars or potentially extreme cases)
     };
 
@@ -633,10 +557,7 @@ void simulation_thread(std::shared_ptr<Simulation> simulation)
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        // std::unique_lock<std::mutex> lock(simulationMutex);
-        // frameCondition.wait(lock, []
-        //                     { return frameRendered; });
-        // frameRendered = false;
+ 
     }
 }
 
@@ -737,7 +658,7 @@ int main()
         {
             if (SHOW_CONNECTIONS)
             {
-                drawConnections(SHARED_BODIES, scale, center); // massive bottleneck performance lost is perporttotal to how long the simulation has been running
+                drawConnections(SHARED_BODIES, scale, center);
             }
 
             if (SHOW_QUADTREE && !SHARED_QUADTREE.empty())
@@ -892,11 +813,9 @@ int main()
             GuiSetStyle(SLIDER, LINE_COLOR, ColorToInt(transparentBlack));
         }
 
-        // Draw a semi-transparent background for the slider
         // DrawRectangleRec((Rectangle){5, 155, 150, 30}, transparentBlack);
         // DrawRectangleLinesEx((Rectangle){5, 155, 150, 30}, 1, WHITE);
 
-        // Draw slider with clamped display value
         if (GuiSliderBar(sliderBounds, "dt", TextFormat("%.3f", (double)currentDt),
             &sliderDt, SLIDER_MIN_DT, SLIDER_MAX_DT))
         {
@@ -919,41 +838,6 @@ int main()
 
         if (!PERFORMANCE_MODE)
         {
-            {
-                std::lock_guard<std::mutex> lock(UPDATE_LOCK);
-                SystemMetrics metrics = calculateMetrics(SHARED_BODIES);
-
-                int rightX = GetScreenWidth() - 150;
-                int y = 10;
-                int lineHeight = 20;
-
-                DrawText("System Metrics:", rightX, y, 15, WHITE);
-                y += lineHeight * 1.5f;
-
-                DrawText(TextFormat("Central Mass: %.2e", (double)metrics.centralMass), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Total Mass: %.2e", (double)metrics.totalMass), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Avg Speed: %.2f", (double)metrics.averageSpeed), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Kinetic Energy: %.2e", (double)metrics.totalKineticEnergy), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Potential Energy: %.2e", (double)metrics.totalPotentialEnergy), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                float totalEnergy = metrics.totalKineticEnergy + metrics.totalPotentialEnergy;
-                DrawText(TextFormat("Total Energy: %.2e", (double)totalEnergy), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Avg Orbital Period: %.2f", (double)metrics.averageOrbitalPeriod), rightX, y, 5, WHITE);
-                y += lineHeight;
-
-                DrawText(TextFormat("Net Force: %.2e", (double)metrics.netForce), rightX, y, 5, WHITE);
-            }
         }
         EndDrawing();
         // {
